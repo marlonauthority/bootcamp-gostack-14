@@ -1,11 +1,14 @@
-import { startOfHour, parseISO, isBefore, format, subHours } from 'date-fns';
+import { isBefore, format, subHours } from 'date-fns';
 import pt from 'date-fns/locale/pt-BR';
 import User from '../models/User';
 import File from '../models/File';
 import Appointment from '../models/Appointment';
 import Notification from '../schemas/Notification';
+
 import Queue from '../../lib/Queue';
 import CancellationMail from '../jobs/CancellationMail';
+
+import CreateAppointmentService from '../services/CreateAppointmentService';
 
 class AppointmentController {
   async index(req, res) {
@@ -37,72 +40,14 @@ class AppointmentController {
   }
 
   async store(req, res) {
-    // -> Deu certo a validacao, agora pega os seguintes campos..
     const { provider_id, date } = req.body;
 
-    // -> É de suma importancia que seja validado o provider e o provider_id, ambos devem coincidir
-    const isProvider = await User.findOne({
-      where: {
-        id: provider_id,
-        provider: true,
-      },
-    });
-    // -> Se retornar false
-    if (!isProvider) {
-      return res.status(401).json({
-        error: 'Você só pode criar agendamentos com provedores de serviços.',
-      });
-    }
-    // -> Checar se quem esta fazendo o agendamento seja diferente do id prestador, ou seja um prestador nao pode fazer um agendamento para ele mesmo
-    if (provider_id === req.userId) {
-      return res.status(401).json({
-        error: 'Não é possível marcar um agendamento para você mesmo.',
-      });
-    }
-    //
-    // -> Chegagem de Horarios
-    //
-    // parseIso tranforma a string repassada em um objeto em um date do javascript
-    // o startofhour pega o inicio da hora, se tiver 19:30 ele vai pegar 19:00..
-    const hourStart = startOfHour(parseISO(date));
-    // -> hourStart esta antes da data atual?
-    if (isBefore(hourStart, new Date())) {
-      return res
-        .status(400)
-        .json({ error: 'Datas anteriores não são permitidas' });
-    }
-    //
-    // -> Agendamento no mesmo horario?
-    const checkAvailability = await Appointment.findOne({
-      where: {
-        provider_id,
-        canceled_at: null,
-        date: hourStart,
-      },
-    });
-    // -> se ele encontrou o agendamento significa que o horarios NÃO está vago..
-    if (checkAvailability) {
-      return res
-        .status(400)
-        .json({ error: 'A data do agendamento não está disponível.' });
-    }
-    //
-    // -> Se passou por todas as validacoes agora sim é criado o agendamento
-    const appointment = await Appointment.create({
-      user_id: req.userId,
+    const appointment = await CreateAppointmentService.run({
       provider_id,
+      user_id: req.userId,
       date,
     });
-    //
-    // -> Beleza, agendamento feito que tal uma notificação para o prestador de servico
-    const user = await User.findByPk(req.userId);
-    const formatedDate = format(hourStart, "'dia' dd 'de' MMMM', às' H:mm'h'", {
-      locale: pt,
-    });
-    await Notification.create({
-      content: `Novo agendamento feito por ${user.name}, para o ${formatedDate}`,
-      user: provider_id,
-    });
+
     return res.json(appointment);
   }
 
