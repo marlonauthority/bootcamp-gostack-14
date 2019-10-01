@@ -6,6 +6,8 @@ import Appointment from '../models/Appointment';
 
 import Notification from '../schemas/Notification';
 
+import Cache from '../../lib/Cache';
+
 class CreateAppointmentService {
   async run({ provider_id, user_id, date }) {
     // -> É de suma importancia que seja validado o provider e o provider_id, ambos devem coincidir
@@ -67,6 +69,10 @@ class CreateAppointmentService {
       content: `Novo agendamento feito por ${user.name}, para o ${formatedDate}`,
       user: provider_id,
     });
+
+    // -> invalidate cache
+
+    await Cache.invalidatePrefix(`user:${user.id}:appointments`);
 
     return appointment;
   }
