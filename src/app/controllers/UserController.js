@@ -1,6 +1,8 @@
 import User from '../models/User';
 import File from '../models/File';
 
+import Cache from '../../lib/Cache';
+
 class UserController {
   async store(req, res) {
     // -> Verificar se existe email no DB
@@ -11,6 +13,11 @@ class UserController {
     }
     // -> Cria um user e apenas os dados repassados
     const { id, name, email, provider } = await User.create(req.body);
+
+    // -> caso for um prestador, deve "zerar" a lista do cache
+    if (provider) {
+      await Cache.invalidate('providers');
+    }
 
     // -> Retorna os dados repassados
     return res.json({
